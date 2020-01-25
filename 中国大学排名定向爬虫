@@ -1,0 +1,52 @@
+from bs4 import BeautifulSoup
+import requests
+import bs4
+
+"""
+原思路
+获取网页源代码
+做成一锅汤
+提取含有全部信息的部分
+对需要的信息进行遍历，并打印出来
+保存
+
+课程思路  #结构化，系统化
+列大纲，化函数，逐个击破
+获取网页源代码                  getHTMLText(url)
+提取源代码数据并填充到列表中     fillUnivList()
+格式化打印列表信息              printUnivList()
+主函数                         main()
+"""
+
+def getHTMLText(url):
+    try:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        r.encoding = r.apparent_encoding
+        return r.text
+    except:
+        return ''
+
+def fillUnivList(ulist, html):
+    soup = BeautifulSoup(html, 'html.parser')
+    for tr in soup.find('tbody').children:
+        if isinstance(tr, bs4.element.Tag):  # 检测标签类型
+            tds = tr('td')
+            ulist.append([tds[0].string, tds[1].string, tds[2].string])
+
+def printUnicList(ulist, num):
+    tplt = "{0:^10}\t{1:{3}^10}\t{2:^10}"
+    print(tplt.format("排名", "学校", "总分", chr(12288)))  # 中文对齐问题
+    for i in range(num):
+        u = ulist[i]
+        print(tplt.format(u[0], u[1], u[2], chr(12288)))
+
+def main():
+    uinfo = []
+    url = 'http://www.zuihaodaxue.cn/zuihaodaxuepaiming2016.html'
+    html = getHTMLText(url)
+    fillUnivList(uinfo, html)
+    printUnicList(uinfo, 20)
+    
+if __name__ == '__main__':
+    main()
