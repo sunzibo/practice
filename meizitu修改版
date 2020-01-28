@@ -78,7 +78,7 @@ class MZiTu:
                 image_data = self.send_request(img_url)
             except:
                 continue
-            file_name = final_dir + '/' + img_url[-9:]  # 最终文件名
+            file_name = final_dir + '/' + dir_name + '.jpg'  # 最终文件名
             with open(file_name, 'wb') as image:
                 image.write(image_data)  # 保存照片
             print("*" * 14, img_url, '下载完成', "*" * 14)  # 每一张保存后显示结果
