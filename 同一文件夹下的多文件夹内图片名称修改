@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import os
+
+# 同一文件夹下的多文件夹内图片名称修改
+def rename(path):  # 传入文件夹路径
+    filelist = os.listdir(path)  # 将该文件夹下的所有文件夹的名称以列表输出
+    # print(filelist)
+
+    for file in filelist:  # 遍历文件夹下所有文件
+        picpath = path + '/' + file
+        piclist = os.listdir(picpath)  # 将文件夹内的图片名称以列表形式输出
+        i = 0
+        for item in piclist:
+            if item.endswith('.jpg'):  # 确保只修改特定格式的名称
+                src = os.path.join(os.path.abspath(picpath), item)
+                dst = os.path.join(os.path.abspath(picpath), file + str(i) + '.jpg')
+                try:  # 如果名称与修改后名称一致会导致报错，所以try一下
+                    os.rename(src, dst)
+                except:
+                    print(f'{file}名称已修改')
+                print(f'将--{src}--重命名为--{dst}--')
+                i = i + 1
+        print('-------所有文件均已重命名-------')
+
+if __name__ == '__main__':
+    path = 'D:/1122'
+    rename(path)
