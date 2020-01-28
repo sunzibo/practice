@@ -1,0 +1,126 @@
+import requests
+from bs4 import BeautifulSoup
+import traceback
+import re
+import os
+import multiprocessing
+import time
+
+"""
+多亏了try使得整个程序可以正常的运行，程序的基本功能得以实现。
+但整个程序问题仍较多，获取信息遗漏较多
+照片保存出错
+源代码获取出错
+代码解析出错
+连接下载出错
+目前这些错误暂时搁置，后续有能力在继续解决
+
+存在问题：
+下载的部分图片无法打开  --使用pool多进程后问题得到改善，但仍未解决
+经常出现 raise timeout("select timed out") 可能是网络的问题      --使用pool多进程后问题得到改善，但仍未解决，且爬取的越多出现频次越高，需要使用time降低爬取速度
+使用traceback.print_exc()，要标记出现问题的地方，不然容易混淆
+
+已解决：
+出现 raise WantReadError()  OpenSSL.SSL.WantReadError错误      --使用pool多进程后问题得到改善
+单线程爬取，爬取速度太慢                                         --已使用pool多进程
+经常出现 raise timeout("select timed out") 可能是网络的问题      --使用pool多进程后问题得到改善
+
+"""
+
+def getHTMLText(url, code='utf-8'):
+    """获取网页源代码，可直接指定解码方式"""
+    try:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        r.encoding = code
+        print('源代码已获取')
+        time.sleep(0.5)
+        return r.text
+    except:
+        print('获取源代码出错')
+        traceback.print_exc()  # 打印错误信息
+        time.sleep(0.5)
+        return ''
+
+def getPicList(lst, listURL):
+    """获取外层列表数据，网址"""
+    html = getHTMLText(listURL, 'GBK2312')
+    soup =BeautifulSoup(html, 'html.parser')
+    a = soup.find_all('a')
+    for i in a:
+        try:
+            href = i.attrs['href']
+            lst.append(re.findall(r'/pic/html\d*/*\d*/*\d*.html', href)[0])  # 获取所有图集的链接
+            # 出现IndexError: list index out of range问题，可能是列表中为空，[0]取值会出现这个情况
+            print(lst)
+        except:
+            print('解析网页信息出错')
+            traceback.print_exc()  # 出现IndexError: list index out of range问题，但不影响程序的从正常运行，这就是try的好处，但是不知道出现错误的原因
+            continue  # 在for循环中出现问题可使用continue跳出进入下一个循环；在非循环中使用return不运行下面的代码
+
+def getPicInfo(url):
+    """获取图集的所有图片"""
+    html = getHTMLText(url)
+    try:
+        if html == "":
+            return
+        # 页面比较简单，用正则可以直接找到所需的数据，正则找到的数据是列表形式的，需要用[0]提取出来
+        pic_name_re = re.findall(r'<h1 class="text-overflow">.*?</h1>', html)[0]
+        pic_src_re = re.findall(r'src="https://.*?.jpg"', html)
+
+        pic_name = pic_name_re.split('>')[1].split('<')[0]  # 用split将需要的信息分离出来
+        print(pic_name)
+
+        if '丝' in pic_name or '脚' in pic_name:
+            print(f'找到符合条件--{pic_name}')  # 找到需要的信息
+
+            pic_page = 1  # 用来进行不重复命名
+
+            if os.path.exists(f'D://123/{pic_name}'):  # open函数不能直接创建多级文件夹，需使用makedirs创建
+                print('文件已存在！')
+                return  # 跳出当前循环，进入下一个循环
+
+            if not os.path.exists(f'D://123/{pic_name}'):  # open函数不能直接创建多级文件夹，需使用makedirs创建
+                os.makedirs(f'D://123/{pic_name}')
+
+            for i in range(len(pic_src_re)):  # 遍历每个图片的链接，进行下载
+                pic_src = eval(pic_src_re[i].split('=')[1])  # 将图片的下载信息分离出来
+                title = pic_name + str(pic_page) + '.jpg'  # 构造图片的名称
+                pic_page += 1
+
+                try:
+                    with open(f'D://123/{pic_name}/{title}', 'wb') as f:  # 在已创建的文件夹下直接下载，如果没有文件夹会报错
+                        r = requests.get(pic_src, timeout=30)
+                        f.write(r.content)
+                        print(f'照片{title}已保存')
+                except:
+                    print('保存图片出错')
+                    traceback.print_exc()
+                    return
+
+    except:
+        print('获取图集图片出错')
+        traceback.print_exc()
+        return
+
+def main():
+    pic_list_url = 'https://www.1345zz.com/pic/html28'
+    pic_info_url = 'https://www.1345zz.com'
+    slist = []
+
+    # pool_list = multiprocessing.Pool(processes=3)
+    for p in range(21, 25):
+        listURL = pic_list_url + f'/index_{p}.html'
+        # pool_list.apply_async(getPicList, (slist, listURL))  #
+        getPicList(slist, listURL)
+
+        pool_info = multiprocessing.Pool(processes=3)
+        for picHref in slist:
+            url = pic_info_url + picHref
+            pool_info.apply_async(getPicInfo, (url,))
+
+        pool_info.close()
+        pool_info.join()
+
+if __name__ == '__main__':
+    main()
