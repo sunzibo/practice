@@ -1,0 +1,170 @@
+from gevent import monkey
+monkey.patch_all()  # 打猴子补丁，识别程序中的耗时操作，位置要放到最前
+import gevent
+
+import os
+import shutil
+
+import requests
+from lxml import etree
+import time
+import multiprocessing
+
+
+"""
+4hu图片爬取--协程版
+下载照片的速度明显提升，但暂时不能和进程池同步或异步的同时运行
+"""
+
+class MZiTu:
+
+    # 初始化对象属性
+    def __init__(self):
+        self.index_url = "https://www.3567yy.com/pic/html28/"
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36",
+            "Referer": "https://www.3567yy.com/pic/html28"
+        }
+        self.path = input('请输入保存的文件夹名(默认为--D://1122--):')
+
+    # 发送request请求
+    def send_request(self, url):
+        """获取url的二进制代码"""
+        return requests.get(url, headers=self.headers, timeout=30).content  # .content以字节的方式访问请求响应体，对于非文本请求
+
+    # 解析每页的数据
+    def parse(self, html_str):  # parse [pɑrs]解析
+        print("*" * 14, '解析每页数据', "*" * 14)
+        html = etree.HTML(html_str)  # etree.HTML():构造了一个XPath解析对象并对HTML文本进行自动修正。
+        titles = html.xpath('//a[@class="video-pic loading"]')
+        content_list = []
+        for title in titles:
+            item = {}
+            item['title'] = title.xpath('./@title')[0]
+            item['href'] = title.xpath('./@href')[0]  # 需增加https://www.3567yy.com
+            content_list.append(item)  # 将每一个标题和链接写入字典后放入列表中，比如[ { },{ } ]
+            # print(item)
+        print('每页数据的解析结果：  ', content_list, '\n')
+        return content_list  # 解析出每个写真集的名称和链接
+
+    # 获取每张写真集的img_url
+    def get_img_url(self, detail_html):
+        html = etree.HTML(detail_html)  # etree.HTML():构造了一个XPath解析对象并对HTML文本进行自动修正。
+        img_url = html.xpath('//div[@class="details-content text-justify"]/img/@src')
+        return img_url  # 每个写真页面的所有图片链接
+
+    # 判断文件夹是否存在,不存在创建文件夹，存在则跳过
+    def mkdir(self, dir_name):  
+        # 该函数我将它改为把全部图片均放到同一个文件夹内，最好是放在不同的文件夹能显示这个函数的功能
+        meizi_dir = self.path if self.path else 'D://1122'  # 判断是否有指定目录，没有则默认'D://1122'
+        final_dir = meizi_dir  # 最终的文件夹路径,都放到一个文件夹里
+        if os.path.exists(final_dir):
+            final_dir = final_dir  # 如果文件已存在，则跳过，不进行删除再下载
+            # shutil.rmtree(final_dir)   # 递归地删除文件
+        else:
+            print("-" * 30 + '文件{}未存在，已创建'.format(dir_name) + "-" * 30, '\n')
+            os.makedirs(final_dir)
+        return final_dir
+
+    # 保存img
+    def save_image(self, j, dir_name, final_dir, img_url):
+        # 将for循环放到函数之外，可以运行协程
+        try:  # 这个try用的很好，就在请求链接时使用，如果连接失败则跳过后面进入下一个循环
+            image_data = self.send_request(img_url)
+        except:
+            return
+        file_name = final_dir + '/' + dir_name + str(j) + '.jpg'  # 最终文件名  j没有转化为字符串，导致半个小时的时间浪费
+        with open(file_name, 'wb') as image:
+            image.write(image_data)  # 保存照片
+        print("*" * 14, dir_name + str(j) + '.jpg', '下载完成', "*" * 14)  # 每一张保存后显示结果
+
+        # try:  # 担心出现同名文件会造成错误，但是目前看来是直接替换了，不会产生错误
+        #     with open(file_name, 'wb') as image:
+        #         image.write(image_data)  # 保存照片
+        #     print("*" * 14, dir_name + str(j) + '.jpg', '下载完成', "*" * 14)  # 每一张保存后显示结果
+        # except:
+        #     print('文件已存在')
+        #     return
+
+    # 运行爬虫
+    def run(self, i):
+        # 1.获取每页的url地址并解析
+        page_url = self.index_url + f'index_{i}.html'
+        # 2. 发送请求,获取响应
+        try:
+            html_str = self.send_request(page_url).decode()  # 将二进制的数据解码
+        except:
+            return
+        # 3. 解析数据
+        content_list = self.parse(html_str)  # 获取每页的图集信息
+        # 4. 获取详情页的img
+        # 获取每张写真集并解析
+        for content in content_list:  # 将每一个写真集的数据从列表中取出
+            # 获取每张写真集的img_url
+            dir_name = content['title']  # 将字典中的数据取出，写真集的名称
+            pic_href = content['href']  # 将字典中的数据取出，写真集的链接
+            pic_url = 'https://www.3567yy.com' + pic_href
+            print("-" * 30 + '正在获取{}'.format(dir_name) + "-" * 30)
+            print('写真集的链接  ', pic_url, '\n')
+            time.sleep(0.5)
+
+            # 找出符合条件的进行下载
+            # if '丝' not in dir_name:
+            #     continue
+            # else:
+            #     print('wa~~~~~~~o', dir_name, '来喽！')
+
+            # 先判断文件是否存在，在进行遍历信息
+            final_dir = self.mkdir(dir_name)  # 最终的保存路径
+            # if final_dir is None:
+            #     continue  # 文件存在时跳过，分不同文件夹存放的时候的判断
+
+            # 获取每张写真集每页的img_url
+            try:
+                detail_html = self.send_request(pic_url).decode()
+                # 因为这个网址一个网页只显示一张图片，所以next_url是写真集的链接，确切的说是写真集第一张图片的链接，要获得其他的图片就需要get_img_url()产生下一张图片的链接
+            except:
+                continue
+            try:
+                img_url_list = self.get_img_url(detail_html)
+                # 获取img_url为本页网页内需要的图片的链接，next_url为下一页网页的链接
+            except:
+                continue
+
+            # 保存图片，协程下载，速度较快
+            if img_url_list:
+                li = list()  # 创建一个空列表
+                # 创建所有的卵，添加到li列表中
+                j = 0
+                for img_url in img_url_list:  # 遍历每一个照片的链接
+                    spawn = gevent.spawn(self.save_image, j, dir_name, final_dir, img_url)
+                    # self.save_image(j, dir_name, final_dir, img_url)  # 保存图片
+                    li.append(spawn)
+                    j += 1
+                gevent.joinall(li)
+
+                print("-" * 29 + '写真集{}保存完毕'.format(dir_name) + "-" * 30 + '\n\n')  # 一套保存后显示结果
+
+        print("-" * 32 + '第{}页获取完成'.format(int(i)) + "-" * 32 + '\n\n')
+
+
+def main():
+    mz = MZiTu()
+    for i in range(25, 35):
+        mz.run(i)
+
+    # 同步和异步的进程池方式和协程无法同时运行，运行不会出错但也没有解决，像卡在某一个地方一直在循环，暂时无法解决
+    # pool_info = multiprocessing.Pool(processes=3)
+    # for i in range(30, 35):
+    #     pool_info.apply(mz.run, (i,))
+
+    # pool_info = multiprocessing.Pool(processes=5)
+    # for i in range(25, 35):
+    #     pool_info.apply_async(mz.run, (i, ))
+    #
+    # pool_info.close()
+    # pool_info.join()
+
+
+if __name__ == '__main__':
+    main()
