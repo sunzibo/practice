@@ -1,0 +1,44 @@
+import urllib.request
+import gevent
+import re
+from gevent import monkey
+import os
+
+monkey.patch_all()  # gevent打补丁
+
+"""
+python协程多任务爬取图片案例
+爬取虎牙美女主播图片
+教程地址：https://blog.csdn.net/qq_40808154/article/details/89288551
+"""
+
+
+# 图片下载操作
+def download(img_name, img_url):
+    req = urllib.request.urlopen(img_url)
+    img_content = req.read()
+    # 将文件放在项目下的pictures文件夹下
+    with open('D:/4/' + img_name, "wb") as f:
+        f.write(img_content)
+
+
+def main():
+    # 读取网页中的源码内容,meinv.html是beauties网页的源码内容，我把它放在了我项目下面
+    with open("meinv1.html", "r", encoding='utf-8') as f:
+        url_content = f.read()
+    # 使用正则过滤出beauties图片的网址，保存到img_li列表中
+    img_li = re.findall(r"https://anchorpost.*?.jpg", url_content)
+    print(len(img_li))  # 打印出列表长度
+
+    j = 0
+    li = list()  # 创建一个空列表
+    # 创建所有的卵，添加到li列表中
+    for i in img_li:
+        spawn = gevent.spawn(download, str(j) + ".jpg", i)
+        li.append(spawn)
+        j += 1
+    gevent.joinall(li)  # 将所有的卵放入joinall中实现多任务下载
+
+
+if __name__ == '__main__':
+    main()
