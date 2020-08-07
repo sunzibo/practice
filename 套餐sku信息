@@ -1,0 +1,86 @@
+# coding: utf-8
+
+# selenium
+from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+# 随机时间
+import random
+from time import sleep
+# 数据读写
+import xlrd
+from xlrd import open_workbook
+from xlutils.copy import copy
+# 网页数据分析
+from pyquery import PyQuery as pq
+
+
+# 获取excel中信息
+def excel():
+    wb = xlrd.open_workbook('C:/Users/wb-slw456826/Desktop/itemID.xlsx')  # 打开Excel文件
+    sheet = wb.sheet_by_name('Sheet1')  # 通过excel表格名称(Sheet1)获取工作表
+    dat = []  # 创建空list
+    for a in range(sheet.nrows):  # 循环读取表格内容（每次读取一行数据）
+        cells = sheet.row_values(a)  # 每行数据赋值给cells
+        data = int(cells[0])  # 因为表内可能存在多列数据，0代表第一列数据，1代表第二列，以此类推
+        dat.append(data)  # 把每次循环读取的数据插入到list
+    return dat
+
+# 解析页面，保存至文件
+def parse_page(driver, itemID):
+    doc = pq(driver.page_source)  # 将当前网页解析处理
+    items = doc(".next-tabs-tab-inner-content").items()  # 按css找到所需的数据
+    for item in items:
+        sku_info = []
+        sku_info.append(f'{itemID}')
+        sku_info.append(item.text())  # [itemID, sku]
+        # 将每次获取的数据存入文件中
+        write_excel_xlsx('123.xlsx', sku_info)
+
+# 在excel中写入信息
+def write_excel_xlsx(path, value):
+    r_xls = open_workbook(path)  # 读取excel文件
+    row = r_xls.sheets()[0].nrows  # 获取已有的行数
+    excel = copy(r_xls)  # 将xlrd的对象转化为xlwt的对象
+    table = excel.get_sheet(0)  # 获取要操作的sheet
+
+    # 对excel表追加一行内容
+    table.write(row, 0, value[0])  # 括号内分别为行数、列数、内容
+    table.write(row, 1, value[1])
+
+    excel.save(path)  # 保存并覆盖文件
+    print(f'数据写入成功--{value}')
+
+def main():
+    driver = webdriver.Chrome("D:/pycharm/chromedriver.exe")
+    wait = WebDriverWait(driver, 10)
+    # 访问发布页
+    driver.get("https://tuan.trip.taobao.com/sell/newPublish/packageNew?itemId=617765849339")
+    sleep(30)
+    print('登入成功')
+
+    itemID_list = excel()  # 将读取的数据[...]取出
+    itemID_num = len(itemID_list)  # 需遍历的总数量
+    num = 1
+    for itemID in itemID_list:
+        driver.get(f"https://tuan.trip.taobao.com/sell/newPublish/packageNew?itemId={itemID}")
+        print(f'切换成功-{itemID}')
+        try:
+        # 解析页面
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR,
+                                                       ".next-tabs-tab-inner-content")))
+            print('找到.next-tabs-tab-inner-content')
+            parse_page(driver, itemID)
+        except Exception as e:
+            print(e)
+            break
+        print(f'目前进度----{num}/{itemID_num}')
+        # 随机休息几秒钟
+        sleepTime = random.randint(5, 20)
+        print(f'sleepTime--{sleepTime}')
+        sleep(sleepTime)
+        num += 1
+
+if __name__ == "__main__":
+    main()
